@@ -1,0 +1,80 @@
+# Copyright 2025 New Vector Ltd
+#
+# SPDX-License-Identifier: LicenseRef-Element-Commercial
+
+name: Build ESS Runner Docker Images
+
+on:
+  push:
+    branches:
+    - main
+
+env:
+  REGISTRY_IMAGE: ghcr.io/${{ github.repository }}/runner
+
+jobs:
+  # Build our application docker images in parallel.
+  docker-build-and-push:
+    permissions:
+      contents: read
+      packages: write
+    name: Build runner container image
+    runs-on: 'cpu-s'
+    steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3
+      with:
+        driver: remote
+        # verify namespace portion of hostname matches your expected set of runners
+        endpoint: "tcp://buildkit-rootless-amd64.ci-buildkit-eio.svc.cluster.local:1234"
+      env:
+        BUILDER_NODE_0_AUTH_TLS_CACERT: ${{ secrets.SELF_HOSTED_BUILDKIT_CA }}
+        BUILDER_NODE_0_AUTH_TLS_CERT: ${{ secrets.SELF_HOSTED_BUILDKIT_CERT }}
+        BUILDER_NODE_0_AUTH_TLS_KEY: ${{ secrets.SELF_HOSTED_BUILDKIT_KEY }}
+        BUILDER_NODE_1_AUTH_TLS_CACERT: ${{ secrets.SELF_HOSTED_BUILDKIT_CA }}
+        BUILDER_NODE_1_AUTH_TLS_CERT: ${{ secrets.SELF_HOSTED_BUILDKIT_CERT }}
+        BUILDER_NODE_1_AUTH_TLS_KEY: ${{ secrets.SELF_HOSTED_BUILDKIT_KEY }}
+
+    - name: Checkout Repository
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5
+
+    - name: Login to GHCR
+      uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Get Release Tag
+      if: github.ref_type == 'tag' # Only for GitHub releases
+      run: |
+        echo "Converting $GITHUB_REF to tags"
+        echo "VERSION=${GITHUB_REF#refs\/tags\/runner-}" >> "$GITHUB_ENV"
+
+    - name: Docker meta
+      id: meta
+      uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f  # v5
+      with:
+        images: |
+          ${{ env.REGISTRY_IMAGE }}
+        flavor: |
+          latest=false
+        tags: |
+          type=raw,value=${{ env.VERSION }},enable=${{ github.ref_type == 'tag' }}
+          type=raw,value=latest,enable={{is_default_branch}}
+        labels: |
+          org.opencontainers.image.licenses=AGPL-3.0-only
+        annotations: |
+          org.opencontainers.image.licenses=AGPL-3.0-only
+
+    - name: Build and Push Image
+      uses: docker/bake-action@3acf805d94d93a86cce4ca44798a76464a75b88c  # v6
+      with:
+        push: ${{ github.ref_type == 'tag' || github.ref == 'refs/heads/main' }}
+        files: |
+          docker-bake.hcl
+          cwd://${{ steps.meta.outputs.bake-file }}
+        targets: runner
+        set: |
+          *.output=type=image
+          *.platform=linux/amd64
