@@ -43,6 +43,7 @@ runs:
     - name: Install ess-helm pytest packege
       shell: bash
       run: |
+        uv init || echo "Already initialized"
         uv add git+https://github.com/element-hq/ess-helm.git@gaelg/pytest-test-package#subdirectory=tests
 
     - name: Install ess-helm pytest packege
