@@ -13,7 +13,7 @@ inputs:
     required: false
     default: "true"
   gh-token:
-    description: 'The Github token to use for fetching the chart. required to fetch the chart'
+    description: 'The Github token to use for fetching the chart'
     required: false
 runs:
   using: composite
@@ -110,14 +110,19 @@ runs:
       env:
         REMOTE_REF: ${{ inputs.ess-helm-ref }}
         REPOSITORY: ${{ inputs.ess-repository }}
-        GITHUB_TOKEN": ${{ inputs.gh-token }}
+        GITHUB_TOKEN: ${{ inputs.gh-token }}
       run: |
-        curl -L -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2026-03-10" \
-        -o repo.zip https://api.github.com/repos/${REPOSITORY}/zipball/${REMOTE_REF}
+        if [ -z "$GITHUB_TOKEN" ]; then
+          curl -L -o repo.zip "https://github.com/${REPOSITORY}/archive/refs/heads/${REMOTE_REF}.zip"
+        else
+          curl -L -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -o repo.zip "https://api.github.com/repos/${REPOSITORY}/zipball/${REMOTE_REF}"
+        fi
+
         unzip repo.zip
-        # Move the subdirectory to your desired location
-        mv {repo}-*/charts ./charts
-        rm -rf {repo}-* repo.zip
+        # Extract the subdirectory (adjust the wildcard as needed)
+        mv *${REPOSITORY##*/}-*/charts/matrix-stack ./charts/matrix-stack
+        rm -rf *${REPOSITORY##*/}-* repo.zip
 
     - name: Install ess-helm pytest package
       shell: bash
