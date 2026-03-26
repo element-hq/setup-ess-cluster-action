@@ -49,7 +49,7 @@ runs:
     - name: Install ess-helm pytest packege
       shell: bash
       run: |
-        PYTEST_KEEP_CLUSTER=1 pytest ess-community-integration-tests --env-setup
+        PYTEST_KEEP_CLUSTER=1 pytest  -pyargs ess-community-integration-tests --env-setup
 
         k3d kubeconfig merge ess-helm -ds
 
