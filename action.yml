@@ -7,7 +7,14 @@ inputs:
     default: "main"
   ess-repository:
     description: The repository to install ess-community-integration-tests from
-    default: "https://github.com/element-hq/ess-helm.git"
+    default: "element-hq/ess-helm"
+  fetch-ess-chart:
+    description: If true, the chart will be fetched from the repository instead of installed from the local directory
+    required: false
+    default: "true"
+  gh-token:
+    description: 'The Github token to use for fetching the chart. required to fetch the chart'
+    required: false
 runs:
   using: composite
   steps:
@@ -95,7 +102,22 @@ runs:
         REMOTE_REF: ${{ inputs.ess-helm-ref }}
         REPOSITORY: ${{ inputs.ess-repository }}
       run: |
-        uv tool install git+${REPOSITORY}@${REMOTE_REF}#subdirectory=tests
+        uv tool install git+https://github.com/${REPOSITORY}.git@${REMOTE_REF}#subdirectory=tests
+
+    - name: Fetch remote helm chart repository
+      shell: bash
+      if: ${{ inputs.fetch-ess-chart == 'true' }}
+      env:
+        REMOTE_REF: ${{ inputs.ess-helm-ref }}
+        REPOSITORY: ${{ inputs.ess-repository }}
+        GITHUB_TOKEN": ${{ inputs.gh-token }}
+      run: |
+        curl -L -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2026-03-10" \
+        -o repo.zip https://api.github.com/repos/${REPOSITORY}/zipball/${REMOTE_REF}
+        unzip repo.zip
+        # Move the subdirectory to your desired location
+        mv {repo}-*/charts ./charts
+        rm -rf {repo}-* repo.zip
 
     - name: Install ess-helm pytest package
       shell: bash
