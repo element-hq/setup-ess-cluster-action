@@ -31,271 +31,47 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: engineerd/setup-kind@ecfad61750951586a9ef973db567df1d28671bdc  # v0.6.2
+    - name: Install uv
+      uses: astral-sh/setup-uv@6ee6290f1cbc4156c0bdd66691b2c144ef8df19a  # v7.4.0
       with:
-        version: ${{ inputs.kind-version }}
-        name: "ess-helm"
-        skipClusterCreation: "true"
-        skipClusterLogsExport: "true"
+        enable-cache: true
+        activate-environment: true
+        python-version: "3.14"
 
     - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4  # v4.3.1
+
+    - name: Install ess-helm pytest packege
+      shell: bash
+      run: |
+        uv add git+https://github.com/element-hq/ess-helm.git@gaelg/pytest-test-package#subdirectory=tests
+
+    - name: Install ess-helm pytest packege
+      shell: bash
+      run: |
+        PYTEST_KEEP_CLUSTER=1 pytest ess-community-integration-tests --env-setup
+
+        k3d kubeconfig merge ess-helm -ds
 
     - name: Create action workdir
       shell: bash
       run: |
-        mkdir -p .setup-ess-kind-cluster-action
+        mkdir -p .setup-ess-cluster-action
 
     - name: Setup runner paths
       shell: bash
       id: setup-paths
       env:
-        KIND_SHARED_MOUNT_PATH: "${{ inputs.kind-shared-mount-path }}"
+        SHARED_MOUNT_PATH: "${{ inputs.shared-mount-path }}"
         CONTAINERD_MIRRORS_PATH: "${{ inputs.containerd-mirrors-path }}"
       run: |
         if [[ "$ELEMENT_DIND_RUNNER" == "true" ]]; then
           echo "Enabling private mirrors"
-          echo "kind-shared-mount-path=/dind-job-shared" | tee -a $GITHUB_OUTPUT
+          echo "shared-mount-path=/dind-job-shared" | tee -a $GITHUB_OUTPUT
           echo "containerd-mirrors-path=/containerd-pull-through-cache" | tee -a $GITHUB_OUTPUT
         else
-          echo "kind-shared-mount-path=$KIND_SHARED_MOUNT_PATH" | tee -a $GITHUB_OUTPUT
+          echo "kind-shared-mount-path=$SHARED_MOUNT_PATH" | tee -a $GITHUB_OUTPUT
           echo "containerd-mirrors-path=$CONTAINERD_MIRRORS_PATH" | tee -a $GITHUB_OUTPUT
         fi
-
-    - name: Setup values
-      shell: bash
-      env:
-        INGRESS_NGINX_VERSION: "${{ inputs.ingress-nginx-version }}"
-        METRICS_SERVER_VERSION: "${{ inputs.metrics-server-version }}"
-        PROMETHEUS_OPERATOR_VERSION: "${{ inputs.prometheus-operator-version }}"
-        CERT_MANAGER_VERSION: "${{ inputs.cert-manager-version }}"
-        SETUP_KIND_SHARED_MOUNT_PATH: "${{ steps.setup-paths.outputs.kind-shared-mount-path }}"
-        SETUP_CONTAINERD_MIRRORS_PATH: "${{ steps.setup-paths.outputs.containerd-mirrors-path }}"
-        HOSTS_TOML: |
-          [host."http://registry:5000"]
-            capabilities = ["pull", "resolve"]
-        AUDIT_POLICY_YML: |
-          apiVersion: audit.k8s.io/v1
-          kind: Policy
-          rules:
-          - level: Metadata
-
-        KIND_YML: |
-          apiVersion: kind.x-k8s.io/v1alpha4
-          kind: Cluster
-          name: ess-helm
-          nodes:
-          - role: control-plane
-            kubeadmConfigPatches:
-            - |-
-              kind: InitConfiguration
-              nodeRegistration:
-                kubeletExtraArgs:
-                  node-labels: "ingress-ready=true"
-            - |-
-              apiVersion: kubelet.config.k8s.io/v1beta1
-              kind: KubeletConfiguration
-              containerLogMaxSize: 100Mi
-              containerLogMaxFiles: 10
-            - |
-              kind: ClusterConfiguration
-              apiServer:
-                  # enable auditing flags on the API server
-                  extraArgs:
-                    audit-log-path: /var/log/kubernetes/kube-apiserver-audit.log
-                    audit-policy-file: /etc/kubernetes/policies/audit-policy.yaml
-                  # mount new files / directories on the control plane
-                  extraVolumes:
-                    - name: audit-policies
-                      hostPath: /etc/kubernetes/policies
-                      mountPath: /etc/kubernetes/policies
-                      readOnly: true
-                      pathType: "DirectoryOrCreate"
-                    - name: "audit-logs"
-                      hostPath: "/var/log/kubernetes"
-                      mountPath: "/var/log/kubernetes"
-                      readOnly: false
-                      pathType: DirectoryOrCreate
-            extraMounts:
-            - hostPath: ${{ steps.setup-paths.outputs.kind-shared-mount-path }}/audit-policy.yml
-              containerPath: /etc/kubernetes/policies/audit-policy.yaml
-              readOnly: true
-            - hostPath: ${{ steps.setup-paths.outputs.kind-shared-mount-path }}/local_mirrors
-              containerPath: /etc/containerd/certs.d
-              readOnly: true
-            extraPortMappings:
-            - containerPort: 80
-              hostPort: 80
-              protocol: TCP
-            - containerPort: 443
-              hostPort: 443
-              protocol: TCP
-            # Matrix RTC SFU TCP and Muxed UDP
-            - containerPort: 30881
-              hostPort: 30881
-              protocol: TCP
-            - containerPort: 30882
-              hostPort: 30882
-              protocol: UDP
-          containerdConfigPatches:
-          # Workaround breakage https://github.com/containerd/containerd/pull/10177 appears to cause issues against registry.element.io
-          # `use_local_image_pull = true` probably isn't needed as kind sets `discard_unpacked_layers = true` which is
-          # incompatible with the transfer service (which also trips up on registry.element.io)
-          - |-
-            [plugins.'io.containerd.cri.v1.images']
-              max_concurrent_downloads = 0
-              use_local_image_pull = true
-          - |-
-            [plugins."io.containerd.grpc.v1.cri".registry]
-              config_path = "/etc/containerd/certs.d"
-      run: |
-        mkdir -p .setup-ess-kind-cluster-action/charts
-        yq -n '.crds.enabled = true' > .setup-ess-kind-cluster-action/charts/cert-manager.yml
-        yq -n '.controller.ingressClassResource.default = true' > .setup-ess-kind-cluster-action/charts/ingress-nginx.yml
-        yq -i '.controller.config.hsts = false' .setup-ess-kind-cluster-action/charts/ingress-nginx.yml
-        yq -i '.controller.hostPort.enabled = true'  .setup-ess-kind-cluster-action/charts/ingress-nginx.yml
-        yq -i '.controller.allowSnippetAnnotations = true'  .setup-ess-kind-cluster-action/charts/ingress-nginx.yml
-        yq -i '.controller.service.type = "ClusterIP"'  .setup-ess-kind-cluster-action/charts/ingress-nginx.yml
-        yq -i '.controller.service.enabled = true'  .setup-ess-kind-cluster-action/charts/ingress-nginx.yml
-        yq -n '.args = ["--kubelet-insecure-tls"]' > .setup-ess-kind-cluster-action/charts/metrics-server.yml
-
-        mkdir -p .setup-ess-kind-cluster-action/clusters/local_mirrors/localhost:5000
-        echo "$HOSTS_TOML" > .setup-ess-kind-cluster-action/clusters/local_mirrors/localhost:5000/hosts.toml
-        echo "$AUDIT_POLICY_YML" > .setup-ess-kind-cluster-action/clusters/audit-policy.yml
-        echo "$KIND_YML" > .setup-ess-kind-cluster-action/clusters/kind.yml
-
-        if [[ -z "$SETUP_CONTAINERD_MIRRORS_PATH" ]]; then
-          echo "No containerd mirrors to configure"
-        else
-          echo "Enabling private mirrors"
-          cp -r "$SETUP_CONTAINERD_MIRRORS_PATH" "$SETUP_KIND_SHARED_MOUNT_PATH/local_mirrors"
-        fi
-
-        if [[ "$SETUP_KIND_SHARED_MOUNT_PATH" != "." ]]; then
-          cp .setup-ess-kind-cluster-action/clusters/audit-policy.yml "$SETUP_KIND_SHARED_MOUNT_PATH/audit-policy.yml"
-          cp -r .setup-ess-kind-cluster-action/clusters/local_mirrors/localhost:5000 "$SETUP_KIND_SHARED_MOUNT_PATH/local_mirrors"
-        fi
-        cat .setup-ess-kind-cluster-action/clusters/kind.yml
-
-    - shell: bash
-      run: |
-        kind_cluster_name="ess-helm"
-        kind_context_name="kind-$kind_cluster_name"
-        # Space separated list of namespaces to use
-        ess_namespaces="ess"
-
-        root_folder="$(git rev-parse --show-toplevel)"
-        action_folder="$root_folder/.setup-ess-kind-cluster-action"
-        ca_folder="$root_folder/.ca"
-        mkdir -p "$ca_folder"
-
-        if docker ps -a | grep "${kind_cluster_name}-registry"; then
-          docker stop "${kind_cluster_name}-registry" || true
-          docker rm "${kind_cluster_name}-registry" || true
-        fi
-        if kind get clusters 2>/dev/null | grep "$kind_cluster_name"; then
-          echo "Cluster '$kind_cluster_name' is already provisioned by Kind"
-        else
-          echo "Creating new Kind cluster '$kind_cluster_name'"
-          (cd "$action_folder/clusters"; kind create cluster --name "$kind_cluster_name" --config "kind.yml")
-        fi
-
-        network=$(docker inspect $kind_cluster_name-control-plane | jq '.[0].NetworkSettings.Networks | keys | .[0]' -r)
-        docker run \
-            -d --restart=always -p "127.0.0.1:5000:5000" --network "$network" --network-alias "registry" --name "${kind_cluster_name}-registry" \
-            registry:2
-
-        helm --kube-context $kind_context_name upgrade -i ingress-nginx --repo https://kubernetes.github.io/ingress-nginx ingress-nginx \
-          ${INGRESS_NGINX_VERSION:+--version "$INGRESS_NGINX_VERSION"} --namespace ingress-nginx \
-          --create-namespace \
-          -f "$action_folder/charts/ingress-nginx.yml"
-
-        helm --kube-context $kind_context_name upgrade -i metrics-server --repo https://kubernetes-sigs.github.io/metrics-server metrics-server \
-          ${METRICS_SERVER_VERSION:+--version "$METRICS_SERVER_VERSION"} --namespace kube-system \
-          -f "$action_folder/charts/metrics-server.yml"
-
-        helm --kube-context $kind_context_name upgrade -i prometheus-operator-crds --repo https://prometheus-community.github.io/helm-charts prometheus-operator-crds \
-          ${PROMETHEUS_OPERATOR_VERSION:+--version "$PROMETHEUS_OPERATOR_VERSION"} --namespace prometheus-operator \
-          --create-namespace
-
-        helm --kube-context $kind_context_name upgrade -i cert-manager --repo https://charts.jetstack.io cert-manager \
-          ${CERT_MANAGER_VERSION:+--version "$CERT_MANAGER_VERSION"} --namespace cert-manager \
-          --create-namespace \
-          -f "$action_folder/charts/cert-manager.yml"
-
-        # Create a new CA certificate
-        if [[ ! -f "$ca_folder"/ca.crt || ! -f "$ca_folder"/ca.pem ]]; then
-          cat <<EOF | kubectl --context $kind_context_name apply -f -
-        ---
-        apiVersion: cert-manager.io/v1
-        kind: ClusterIssuer
-        metadata:
-          name: ess-ca
-        spec:
-          selfSigned: {}
-        ---
-        apiVersion: cert-manager.io/v1
-        kind: Certificate
-        metadata:
-          name: ess-ca
-          namespace: cert-manager
-        spec:
-          isCA: true
-          commonName: ess-ca
-          secretName: ess-ca
-          # 10 years
-          duration: 87660h0m0s
-          privateKey:
-            algorithm: RSA
-          issuerRef:
-            name: ess-ca
-            kind: ClusterIssuer
-            group: cert-manager.io
-        ---
-        EOF
-          kubectl --context $kind_context_name -n cert-manager wait --for condition=Ready Certificate/ess-ca
-        else
-          kubectl --context $kind_context_name delete ClusterIssuer ess-ca 2>/dev/null || true
-          kubectl --context $kind_context_name -n cert-manager delete Certificate ess-ca 2>/dev/null || true
-          kubectl --context $kind_context_name -n cert-manager delete Secret ess-ca 2>/dev/null || true
-          kubectl --context $kind_context_name -n cert-manager create secret generic ess-ca \
-            --type=kubernetes.io/tls \
-            --from-file=tls.crt="$ca_folder"/ca.crt \
-            --from-file=tls.key="$ca_folder"/ca.pem \
-            --from-file=ca.crt="$ca_folder"/ca.crt
-        fi
-
-        cat <<EOF | kubectl --context $kind_context_name apply -f -
-        apiVersion: cert-manager.io/v1
-        kind: ClusterIssuer
-        metadata:
-          name: ess-selfsigned
-        spec:
-          ca:
-            secretName: ess-ca
-        EOF
-
-        if [[ ! -f "$ca_folder"/ca.crt || ! -f "$ca_folder"/ca.pem ]]; then
-          kubectl --context $kind_context_name -n cert-manager get secret ess-ca -o jsonpath="{.data['ca\.crt']}" | base64 -d > "$ca_folder"/ca.crt
-          kubectl --context $kind_context_name -n cert-manager get secret ess-ca -o jsonpath="{.data['tls\.key']}" | base64 -d > "$ca_folder"/ca.pem
-        fi
-
-        for namespace in $ess_namespaces; do
-          echo "Constructing ESS dependencies in $namespace"
-          server_version=$(kubectl --context $kind_context_name version | grep Server | sed 's/.*v/v/' | awk -F. '{print $1"."$2}')
-          # We don't turn on enforce here as people may be experimenting but we do turn on warn so people see the warnings when helm install/upgrade
-          cat <<EOF | kubectl --context $kind_context_name apply -f -
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: ${namespace}
-          labels:
-            app.kubernetes.io/managed-by: github-actions
-            pod-security.kubernetes.io/audit: restricted
-            pod-security.kubernetes.io/audit-version: ${server_version}
-            pod-security.kubernetes.io/warn: restricted
-            pod-security.kubernetes.io/warn-version: ${server_version}
-        EOF
-        done
 
     - name: Export logs
       if: ${{ failure() }}
