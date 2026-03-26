@@ -25,7 +25,7 @@ runs:
     - name: Install ess-helm pytest package
       shell: bash
       run: |
-        uv run setup-cluster
+        uv run setup-ess-cluster
 
         k3d kubeconfig merge ess-helm -ds
 
