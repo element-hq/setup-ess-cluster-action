@@ -1,33 +1,5 @@
-name: Setup  ESS Kind Cluster
-description: Setup ESS Kind Cluster
-inputs:
-  containerd-mirrors-path:
-    description: "Containerd mirrors path."
-    required: false
-  kind-shared-mount-path:
-    description: "Kind shared mount path."
-    required: false
-    default: "."
-  cert-manager-version:
-    description: "Cert manager version."
-    required: false
-    default: "1.19.0"
-  ingress-nginx-version:
-    description: "Ingress nginx version."
-    required: false
-    default: "4.13.3"
-  metrics-server-version:
-    description: "Metrics server version."
-    required: false
-    default: "3.13.0"
-  prometheus-operator-version:
-    description: "Prometheus operator version."
-    required: false
-    default: "9.3.2"
-  kind-version:
-    description: "Kind version."
-    required: false
-    default: "v0.30.0"
+name: Setup ESS Cluster
+description: Setup ESS Cluster
 runs:
   using: composite
   steps:
