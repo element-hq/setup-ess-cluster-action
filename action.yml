@@ -124,6 +124,7 @@ runs:
         # Extract the subdirectory (adjust the wildcard as needed)
         mv *${REPOSITORY##*/}-*/charts/matrix-stack ./charts/matrix-stack
         rm -rf *${REPOSITORY##*/}-* repo.zip
+        echo "moved ${REPOSITORY} directory charts/matrix-stack to ./charts/matrix-stack"
 
     - name: Install ess-helm pytest package
       shell: bash
