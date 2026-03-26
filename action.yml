@@ -1,5 +1,13 @@
 name: Setup ESS Cluster
 description: Setup ESS Cluster
+inputs:
+  ess-helm-ref:
+    description: The ref of the tag or branch to use to install ess-community-integration-tests
+    required: true
+    default: "main"
+  ess-repository:
+    description: The repository to install ess-community-integration-tests from
+    default: "https://github.com/element-hq/ess-helm.git"
 runs:
   using: composite
   steps:
@@ -68,8 +76,11 @@ runs:
 
     - name: Install ess-helm pytest packege
       shell: bash
+      env:
+        REMOTE_REF: ${{ inputs.ess-helm-ref }}
+        REPOSITORY: ${{ inputs.ess-repository }}
       run: |
-        uv tool install git+https://github.com/element-hq/ess-helm.git@gaelg/pytest-test-package#subdirectory=tests
+        uv tool install git+${REPOSITORY}@${REMOTE_REF}#subdirectory=tests
 
     - name: Install ess-helm pytest package
       shell: bash
