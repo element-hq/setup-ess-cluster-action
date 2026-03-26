@@ -47,6 +47,7 @@ runs:
           pyhelm-integration-cache-
 
     - name: List pyhelm cache contents
+      shell: bash
       run: |
         echo "Listing contents of .pyhelm_cache:"
         ls -la .pyhelm_cache || echo "Cache directory does not exist or is empty"
