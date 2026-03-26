@@ -120,6 +120,7 @@ runs:
         fi
 
         unzip repo.zip
+        mkdir -p charts
         # Extract the subdirectory (adjust the wildcard as needed)
         mv *${REPOSITORY##*/}-*/charts/matrix-stack ./charts/matrix-stack
         rm -rf *${REPOSITORY##*/}-* repo.zip
