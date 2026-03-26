@@ -43,36 +43,14 @@ runs:
     - name: Install ess-helm pytest packege
       shell: bash
       run: |
-        uv init || echo "Already initialized"
-        uv add git+https://github.com/element-hq/ess-helm.git@gaelg/pytest-test-package#subdirectory=tests
+        uv tool install git+https://github.com/element-hq/ess-helm.git@gaelg/pytest-test-package#subdirectory=tests
 
-    - name: Install ess-helm pytest packege
+    - name: Install ess-helm pytest package
       shell: bash
       run: |
-        PYTEST_KEEP_CLUSTER=1 pytest --pyargs ess-community-integration-tests --env-setup
+        uv run setup-cluster
 
         k3d kubeconfig merge ess-helm -ds
-
-    - name: Create action workdir
-      shell: bash
-      run: |
-        mkdir -p .setup-ess-cluster-action
-
-    - name: Setup runner paths
-      shell: bash
-      id: setup-paths
-      env:
-        SHARED_MOUNT_PATH: "${{ inputs.shared-mount-path }}"
-        CONTAINERD_MIRRORS_PATH: "${{ inputs.containerd-mirrors-path }}"
-      run: |
-        if [[ "$ELEMENT_DIND_RUNNER" == "true" ]]; then
-          echo "Enabling private mirrors"
-          echo "shared-mount-path=/dind-job-shared" | tee -a $GITHUB_OUTPUT
-          echo "containerd-mirrors-path=/containerd-pull-through-cache" | tee -a $GITHUB_OUTPUT
-        else
-          echo "kind-shared-mount-path=$SHARED_MOUNT_PATH" | tee -a $GITHUB_OUTPUT
-          echo "containerd-mirrors-path=$CONTAINERD_MIRRORS_PATH" | tee -a $GITHUB_OUTPUT
-        fi
 
     - name: Export logs
       if: ${{ failure() }}
