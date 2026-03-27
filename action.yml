@@ -147,7 +147,7 @@ runs:
       env:
         SETUP_CLUSTER_ESS_COMMAND: ${{ steps.install-ess-helm.outputs.setup-ess-cluster-command }}
       run: |
-        uv run "$SETUP_CLUSTER_ESS_COMMAND"
+        "$SETUP_CLUSTER_ESS_COMMAND"
 
         k3d kubeconfig merge ess-helm -ds
 
@@ -157,7 +157,7 @@ runs:
       env:
         COLLECT_ESS_COMMAND: ${{ steps.install-ess-helm.outputs.collect-ess-command }}
       run: |
-        uv run "$COLLECT_ESS_COMMAND" --system-logs
+        "$COLLECT_ESS_COMMAND" --system-logs
 
     - name: Upload logs
       if: ${{ failure() }}
