@@ -101,7 +101,12 @@ runs:
       env:
         REMOTE_REF: ${{ inputs.ess-helm-ref }}
         REPOSITORY: ${{ inputs.ess-repository }}
+        GITHUB_TOKEN: ${{ inputs.gh-token }}
       run: |
+        # Configure git credentials if gh-token is set
+        if [ -n "${GITHUB_TOKEN}" ]; then
+          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com".insteadOf "https://github.com"
+        fi
         uv tool install git+https://github.com/${REPOSITORY}.git@${REMOTE_REF}#subdirectory=tests
 
     - name: Fetch remote helm chart repository
