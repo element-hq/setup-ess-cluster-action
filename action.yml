@@ -98,6 +98,7 @@ runs:
 
     - name: Install ess-helm pytest packege
       shell: bash
+      id: install-ess-helm
       env:
         REMOTE_REF: ${{ inputs.ess-helm-ref }}
         REPOSITORY: ${{ inputs.ess-repository }}
@@ -107,7 +108,15 @@ runs:
         if [ -n "${GITHUB_TOKEN}" ]; then
           git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com".insteadOf "https://github.com"
         fi
-        uv tool install git+https://github.com/${REPOSITORY}.git@${REMOTE_REF}#subdirectory=tests
+        output=$(uv tool install git+https://github.com/${REPOSITORY}.git@${REMOTE_REF}#subdirectory=tests 2>&1)
+        echo "$output"
+        # Extract the line containing the installed executables
+        executables_line=$(echo "$output" | grep "Installed [0-9]* executables:")
+        # Extract the executable names
+        executables=$(echo "$executables_line" | sed 's/Installed [0-9]* executables: //')
+        # Find the first executable matching the pattern
+        target_executable=$(echo "$executables" | tr ', ' '\n' | grep -E 'setup-ess.*-cluster' | head -n 1)
+        echo "setup-ess-command=${target_executable}" | tee -a "$GITHUB_OUTPUT"
 
     - name: Fetch remote helm chart repository
       shell: bash
@@ -133,8 +142,10 @@ runs:
 
     - name: Install ess-helm pytest package
       shell: bash
+      env:
+        ESS_COMMAND: ${{ steps.install-ess-helm.outputs.setup-ess-command }}
       run: |
-        uv run setup-ess-cluster
+        uv run "$ESS_COMMAND"
 
         k3d kubeconfig merge ess-helm -ds
 
