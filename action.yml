@@ -116,7 +116,9 @@ runs:
         executables=$(echo "$executables_line" | sed 's/Installed [0-9]* executables: //')
         # Find the first executable matching the pattern
         target_executable=$(echo "$executables" | tr ', ' '\n' | grep -E 'setup-ess.*-cluster' | head -n 1)
-        echo "setup-ess-command=${target_executable}" | tee -a "$GITHUB_OUTPUT"
+        echo "setup-ess-cluster-command=${target_executable}" | tee -a "$GITHUB_OUTPUT"
+        target_executable=$(echo "$executables" | tr ', ' '\n' | grep -E 'collect-ess.*-logs' | head -n 1)
+        echo "collect-ess-command=${target_executable}" | tee -a "$GITHUB_OUTPUT"
 
     - name: Fetch remote helm chart repository
       shell: bash
@@ -143,40 +145,19 @@ runs:
     - name: Install ess-helm pytest package
       shell: bash
       env:
-        ESS_COMMAND: ${{ steps.install-ess-helm.outputs.setup-ess-command }}
+        SETUP_CLUSTER_ESS_COMMAND: ${{ steps.install-ess-helm.outputs.setup-ess-cluster-command }}
       run: |
-        uv run "$ESS_COMMAND"
+        uv run "$SETUP_CLUSTER_ESS_COMMAND"
 
         k3d kubeconfig merge ess-helm -ds
 
     - name: Export logs
       if: ${{ failure() }}
       shell: bash
+      env:
+        COLLECT_ESS_COMMAND: ${{ steps.install-ess-helm.outputs.collect-ess-command }}
       run: |
-        mkdir ess-helm-logs
-        k3d kubeconfig merge ess-helm -ds
-        for ns in $(kubectl --context k3d-ess-helm get ns -o custom-columns=NS:.metadata.name --no-headers); do
-          mkdir -p "./ess-helm-logs/$ns"
-          for pod in $(kubectl --context k3d-ess-helm -n "$ns" get pod -o custom-columns=NS:.metadata.name --no-headers); do
-            kubectl --context k3d-ess-helm -n "$ns" logs --all-containers --prefix --timestamps --ignore-errors --previous "$pod" > "./ess-helm-logs/$ns/$pod.previous"
-            kubectl --context k3d-ess-helm -n "$ns" logs --all-containers --prefix --timestamps --ignore-errors "$pod" > "./ess-helm-logs/$ns/$pod.logs"
-          done
-          resources=("pods" "deployments" "statefulsets" "services" "configmaps" "ingresses" "persistentvolumes" "persistentvolumeclaims" "endpoints")
-          for i in "${resources[@]}"; do
-            kubectl --context k3d-ess-helm get "$i" -n "$ns" > "./ess-helm-logs/$ns/$i.txt"
-            echo "----" >> "./ess-helm-logs/$ns/$i.txt"
-            kubectl --context k3d-ess-helm get "$i" -o yaml -n "$ns" >> "./ess-helm-logs/$ns/$i.txt"
-          done
-          kubectl --context k3d-ess-helm get events --sort-by=.metadata.creationTimestamp -n "$ns" > "./ess-helm-logs/$ns/events.txt"
-          kubectl --context k3d-ess-helm get secrets -n "$ns" > "./ess-helm-logs/$ns/secrets.txt"
-          echo "----" >> "./ess-helm-logs/$ns/secrets.txt"
-          kubectl --context k3d-ess-helm get secrets  -o yaml -n "$ns" | yq eval '.items[].data |= with_entries(.value = "censored") | .items[].stringData |= with_entries(.value = "censored")' > "./ess-helm-logs/$ns/secrets.txt"
-        done
-        kubectl --context k3d-ess-helm get crds > "./ess-helm-logs/crds.txt"
-          echo "----" >> "./ess-helm-logs/$ns/crds.txt"
-        kubectl --context k3d-ess-helm get crds -o yaml  | yq 'del .items[].spec' > "./ess-helm-logs/crds.txt"
-        docker logs k3d-ess-helm-server-0 > "./ess-helm-logs/k3d-ess-helm-server-0.logs" 2>&1
-        k3d cluster delete ess-helm
+        uv run "$COLLECT_ESS_COMMAND" --system-logs
 
     - name: Upload logs
       if: ${{ failure() }}
